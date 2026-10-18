@@ -1,97 +1,13 @@
 import SwiftUI
 
-// co.wisniewski: a VNC-viewer-like stream screen for the iPhone. The picture takes the whole
-// screen and zooms (pinch) and pans (the pointer pushing the edges, or the fingers of a pinch); the
-// whole screen is the trackpad (TrackpadSurface: drag moves the pointer, tap clicks, two fingers
-// scroll, press and hold drags, three fingers are the Mac's gestures). Everything else (windows,
-// apps, menus, keys, settings) waits behind a slim top bar that can be hidden.
-
-/// Where the picture sits: how far it is zoomed beyond fitting the screen, and which point of the
-/// frame (a fraction) is at the screen's centre.
-final class ViewerCamera: ObservableObject {
-    @Published var zoom: CGFloat = 1
-    @Published var center = CGPoint(x: 0.5, y: 0.5)
-    var screen: CGSize = .zero
-    var video: CGSize = .zero
-
-    static let maxZoom: CGFloat = 8
-    /// How close to the screen's edge the pointer may come before the picture moves under it.
-    static let edge: CGFloat = 44
-
-    /// The frame aspect-fitted into the screen, at zoom 1.
-    private var fitted: CGSize {
-        guard screen.width > 0, screen.height > 0, video.width > 0, video.height > 0 else { return screen }
-        let s = min(screen.width / video.width, screen.height / video.height)
-        return CGSize(width: video.width * s, height: video.height * s)
-    }
-
-    /// The zoom at which the picture fills the screen (no bars) — the "Fill" button.
-    var fillZoom: CGFloat {
-        let f = fitted
-        guard f.width > 0, f.height > 0 else { return 1 }
-        return min(Self.maxZoom, max(screen.width / f.width, screen.height / f.height))
-    }
-
-    /// The picture's rect on screen. Along an axis where it is smaller than the screen it is centred;
-    /// where it is larger it never leaves a gap at either end.
-    var rect: CGRect {
-        let f = fitted
-        let size = CGSize(width: f.width * zoom, height: f.height * zoom)
-        func origin(_ screen: CGFloat, _ size: CGFloat, _ center: CGFloat) -> CGFloat {
-            if size <= screen { return (screen - size) / 2 }
-            return min(0, max(screen - size, screen / 2 - center * size))
-        }
-        return CGRect(x: origin(screen.width, size.width, center.x),
-                      y: origin(screen.height, size.height, center.y),
-                      width: size.width, height: size.height)
-    }
-
-    /// Writes `center` back from a rect, so it never holds a value the clamp would undo.
-    private func settle(_ r: CGRect) {
-        guard r.width > 0, r.height > 0 else { return }
-        center = CGPoint(x: (screen.width / 2 - r.minX) / r.width, y: (screen.height / 2 - r.minY) / r.height)
-    }
-
-    /// The pointer moved to `p` (a fraction of the frame): past the edge band, the picture follows it.
-    func follow(_ p: CGPoint) {
-        var r = rect
-        guard r.width > screen.width || r.height > screen.height else { return }
-        let x = r.minX + p.x * r.width, y = r.minY + p.y * r.height
-        let edgeX = min(Self.edge, screen.width / 4), edgeY = min(Self.edge, screen.height / 4)
-        var moved = false
-        if r.width > screen.width {
-            if x < edgeX { r.origin.x += edgeX - x; moved = true }
-            else if x > screen.width - edgeX { r.origin.x -= x - (screen.width - edgeX); moved = true }
-        }
-        if r.height > screen.height {
-            if y < edgeY { r.origin.y += edgeY - y; moved = true }
-            else if y > screen.height - edgeY { r.origin.y -= y - (screen.height - edgeY); moved = true }
-        }
-        guard moved else { return }
-        settle(r)
-        settle(rect)
-    }
-
-    /// One step of a pinch: the frame point that was under `from` ends under `to`, at `zoom × scale`.
-    func pinch(scale: CGFloat, from: CGPoint, to: CGPoint) {
-        let before = rect
-        guard before.width > 0, before.height > 0 else { return }
-        let fx = (from.x - before.minX) / before.width, fy = (from.y - before.minY) / before.height
-        zoom = min(Self.maxZoom, max(1, zoom * scale))
-        let f = fitted
-        let size = CGSize(width: f.width * zoom, height: f.height * zoom)
-        settle(CGRect(x: to.x - fx * size.width, y: to.y - fy * size.height, width: size.width, height: size.height))
-        settle(rect)
-    }
-
-    /// Fit ↔ fill, keeping `focus` (a fraction of the frame, the pointer) in view.
-    func toggleFill(focus: CGPoint?) {
-        let fill = fillZoom
-        if zoom > 1.01 { zoom = 1 } else { zoom = fill }
-        if let focus { center = focus }
-        settle(rect)
-    }
-}
+/// The Full-Screen Viewer on an iPhone (docs/iphone-viewer-plan.md), a VNC viewer's arrangement:
+/// the picture takes the whole screen, pinch zooms it (ViewerCamera) and the pointer pushing the
+/// screen's edges pans it; the whole screen is the trackpad (TrackpadSurface: drag moves the
+/// pointer, tap clicks, two fingers scroll, press and hold drags, three fingers are the Mac's
+/// gestures; pointer travel is divided by the zoom). Windows, apps, menus, keys and settings wait
+/// behind a slim bar at the top, which hides to a tab. Settings › This iPhone › Full-Screen Viewer
+/// (`StreamClient.viewerModeKey`, off by default); StreamScreen draws it in place of the phone's
+/// arrangements, held upright or sideways.
 
 /// Which of the bar's pull-downs is open.
 enum ViewerPanel: Equatable { case windows, keys }
@@ -112,8 +28,8 @@ struct ViewerScreen: View {
     let takeTour: () -> Void
     let linkLine: String?
 
-    @StateObject private var camera = ViewerCamera()
-    @AppStorage("viewerBarShown") private var barShown = true
+    @State private var camera = ViewerCamera()
+    @AppStorage("Sill.viewerBarShown") private var barShown = true
     @State private var panel: ViewerPanel? = nil
     @State private var pinchAt: CGPoint? = nil
     /// The pointer as this screen last put it, for Fill's focus.
@@ -173,7 +89,15 @@ struct ViewerScreen: View {
                         .transition(.opacity)
                 }
             }
-            .onAppear { layout(size) }
+            .onAppear {
+                layout(size)
+                #if DEBUG
+                // -SillViewerZoom 2.5: the harness's zoomed-in picture (docs/iphone-viewer-plan.md).
+                let z = UserDefaults.standard.double(forKey: "SillViewerZoom")
+                if z > 1 { camera.pinch(scale: CGFloat(z), from: CGPoint(x: size.width / 2, y: size.height / 2),
+                                        to: CGPoint(x: size.width / 2, y: size.height / 2)) }
+                #endif
+            }
             .onChange(of: size) { _, now in layout(now) }
             .onChange(of: client.videoSize) { _, _ in layout(size) }
         }
@@ -185,9 +109,7 @@ struct ViewerScreen: View {
     }
 
     private func layout(_ size: CGSize) {
-        camera.screen = size
-        camera.video = client.videoSize
-        camera.objectWillChange.send()
+        camera.layout(screen: size, video: client.videoSize)
         onPanelSize(size)
     }
 
@@ -241,8 +163,8 @@ struct ViewerScreen: View {
                     }
                     barButton("keyboard", "Keyboard", open: keyboardShown) { overlay.toggleKeyboard() }
                     barButton("command", "Keys", open: panel == .keys || !latched.isEmpty) { toggle(.keys) }
-                    barButton(camera.zoom > 1.01 ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
-                              camera.zoom > 1.01 ? "Fit" : "Fill", open: false) {
+                    barButton(camera.isZoomedIn ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right",
+                              camera.isZoomedIn ? "Fit" : "Fill", open: false) {
                         withAnimation(.easeOut(duration: 0.2)) { camera.toggleFill(focus: lastPointer) }
                     }
                     barButton("gearshape", "Settings", open: settingsOpen) {

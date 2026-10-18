@@ -44,7 +44,9 @@ struct HostSettingsPanel: View {
     /// This device's switch for Larger Picture (docs/larger-picture-plan.md): off unless turned on,
     /// read by the stream screen, never sent.
     @AppStorage(StreamClient.largerPictureKey) private var largerPicture = false
-    @AppStorage(StreamClient.viewerModeKey) private var viewerMode = true
+    /// This device's switch for the Full-Screen Viewer (docs/iphone-viewer-plan.md): off unless turned
+    /// on, read by the stream screen, never sent; offered on an iPhone.
+    @AppStorage(StreamClient.viewerModeKey) private var viewerMode = false
     /// Whether the switch is offered here, the stream screen's say (`largerPictureOffered`): only on an
     /// iPhone without a hinge whose picture it makes larger.
     @Environment(\.largerPictureOffered) private var offersLargerPicture

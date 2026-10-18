@@ -180,9 +180,9 @@ struct StreamScreen: View {
     /// streams changing meanwhile (a window closed on the Mac, another device's pick). It applies as
     /// the panel goes, in the same motion.
     @State private var largerPictureHeld: Bool? = nil
-    /// co.wisniewski: the iPhone's full-screen, zoomable viewer (ViewerScreen) instead of the
-    /// picture-over-trackpad arrangements. Settings › This iPhone.
-    @AppStorage(StreamClient.viewerModeKey) private var viewerMode = true
+    /// The Full-Screen Viewer (ViewerScreen) in place of a phone's arrangements: Settings › This
+    /// iPhone, off by default (docs/iphone-viewer-plan.md).
+    @AppStorage(StreamClient.viewerModeKey) private var viewerMode = false
     #if DEBUG
     /// The console says once when a decision starts to wait.
     @State private var tourWaitLogged: Double? = nil
