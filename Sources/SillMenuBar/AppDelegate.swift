@@ -26,6 +26,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var pairingWindow: PairDeviceWindowController?
     private var cableNotice: CableNoticeWindowController?
     private var terminating = false
+    private var copyNextPairingLink = false
+
+    /// `sill-mac://pair` (`open sill-mac://pair`): Pair iPhone or iPad…, as the menu does. Only
+    /// opens the window; the code and link show on this Mac's screen and are never written out.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSAppleEventManager.shared().setEventHandler(self, andSelector: #selector(handleURL(_:reply:)),
+                                                     forEventClass: AEEventClass(kInternetEventClass),
+                                                     andEventID: AEEventID(kAEGetURL))
+    }
+
+    @objc private func handleURL(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
+        guard let text = event.paramDescriptor(forKeyword: keyDirectObject)?.stringValue,
+              let url = URL(string: text), url.scheme == "sill-mac", url.host == "pair" else { return }
+        // `?copy=1`: the window's link also goes on the pasteboard (one use, 5 minutes), so it can
+        // be sent to a device away from this Mac's screen.
+        copyNextPairingLink = url.query?.contains("copy=1") == true
+        model.pairDevice()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         DebugHooks.renderPreviewsIfAsked(model: model)      // exits when asked
@@ -123,6 +141,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// The one pairing window: made once, shown with each offer (the same code while it is open).
     func showPairing(_ offer: RemoteAccess.PairingOffer) {
+        if copyNextPairingLink {
+            copyNextPairingLink = false
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(offer.url, forType: .string)
+        }
         let controller = pairingWindow ?? PairDeviceWindowController(model: model)
         pairingWindow = controller
         controller.show(offer)
