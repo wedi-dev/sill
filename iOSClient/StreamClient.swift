@@ -3311,6 +3311,8 @@ final class StreamClient: ObservableObject {
     /// the Mac; the stream screen reads it with what streams (`active`): it acts only while a window
     /// does (`PhonePortraitLayout.largerPicture(switchOn:streaming:)`).
     static let largerPictureKey = "Sill.largerPicture"
+    /// co.wisniewski: the iPhone viewer (ViewerScreen) on or off.
+    static let viewerModeKey = "Sill.viewerMode"
 
     /// A three- or four-finger gesture a surface decided (TrackpadGestures, StrokeObserver), to the
     /// Mac as kind 28, which turns it into its own shortcut (docs/trackpad-gestures-plan.md §6.3):
