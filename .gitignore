@@ -21,3 +21,6 @@ design/reel/
 
 # Python's bytecode caches (Tests/checks/module.py, which its checks' mutants.py import).
 __pycache__/
+
+# A checkout's own bundle ID and signing identity for Scripts/make-app.sh.
+Packaging/local.env

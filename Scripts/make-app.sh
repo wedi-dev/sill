@@ -9,6 +9,10 @@
 #                                          the signature is Developer ID; Scripts/release.sh --dry-run
 #                                          sets SILL_RELEASE_DRY_RUN=1, which only warns about the tag)
 #   SILL_INSTALL_DIR=~/Applications Scripts/make-app.sh --install   (another install folder)
+#   SILL_BUNDLE_ID=com.example.sill.mac Scripts/make-app.sh   (a build of your own, beside Sill.app)
+#
+# Packaging/local.env, if present, is sourced first (git-ignored): a fork's own SILL_BUNDLE_ID and
+# SILL_SIGN_IDENTITY, kept out of the repository so every clone builds as it is.
 #
 # Why a script: SwiftPM builds executables, not app bundles, and everything the host needs from
 # macOS belongs to an app bundle. Screen Recording, Accessibility, Local Network and Login Items
@@ -21,6 +25,8 @@
 # rebuild would silently lose Screen Recording and Accessibility.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# shellcheck source=/dev/null
+[ -f Packaging/local.env ] && . Packaging/local.env
 
 install=0; open_app=0; release=0
 for arg in "$@"; do
@@ -56,7 +62,7 @@ if [ "$release" = 1 ]; then
     fi
 fi
 
-bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Packaging/Info.plist)"
+bundle_id="${SILL_BUNDLE_ID:-$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' Packaging/Info.plist)}"
 
 swift build -c release --product SillMenuBar
 bin="$(swift build -c release --product SillMenuBar --show-bin-path)"
@@ -75,6 +81,7 @@ xcrun vtool -set-build-version macos "${minos:?vtool reported no deployment targ
 cp Packaging/Info.plist "$stage/Contents/Info.plist"
 build_number="$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $build_number" "$stage/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $bundle_id" "$stage/Contents/Info.plist"
 printf 'APPL????' > "$stage/Contents/PkgInfo"
 
 # The icon. design/AppIcon.svg is the iOS art, a full-bleed square. macOS 26+ masks and lights a
@@ -120,7 +127,7 @@ cp "$icon_out"/compiled/* "$stage/Contents/Resources/" 2>/dev/null || true
 # keeps the grants, because the designated requirement names the leaf certificate's common name,
 # which a renewal keeps. (`|| true`: no keychain or no match must fall through to the ad hoc
 # warning below, not end the script under `set -e`.)
-identity="${SILL_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development: / { print $2; exit }' || true)}"
+identity="${SILL_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | awk '/"Apple Development: / && !/CSSMERR_/ { print $2; exit }' || true)}"
 if [ -z "$identity" ]; then
     identity="-"
     echo "warning: no Apple Development identity in the keychain; signing ad hoc. Screen Recording and" >&2
